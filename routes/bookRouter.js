@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const { Book, Category } = require('../models/model');
-const upload = multer({ dest: 'uploads/' })
+const upload = require("../middlewares/upload");
 
 router.get("/", async (req, res) => {
   const books = await Book.findAll();
@@ -18,34 +18,58 @@ router.get("/single/:id", async (req, res) => {
   res.json(book);
 })
 
-router.post("/create", upload.fields([{ name: "pdf" }, { name: "image" }]), async (req, res) => {
-  const { name, description, categoryId } = req.body;
-  if (!name || !description || !categoryId) {
-    return res.status(400).json({ error: "Name and Description are required" });
-  }
-  if (!req.files.image || !req.files.pdf) {
-    return res.status(400).json({ error: "PDF and Image are required" });
-  }
+router.post(
+  "/create",
+  upload.fields([{ name: "image" }, { name: "pdf" }]),
+  async (req, res) => {
+    const { name, description, categoryId } = req.body;
 
-  try {
-
-    const category = await Category.findByPk(categoryId);
-    if (!category) {
-      return res.status(404).json({ error: "Category not found" });
+    if (!name || !description || !categoryId) {
+      return res.status(400).json({ error: "Name, Description, Category required" });
     }
 
-    const book = await Book.create({
-      name,
-      description,
-      categoryId,
-      image: req.files.image[0].filename,
-      pdf: req.files.pdf[0].filename,
-    });
-    res.json({ message: "Book uploaded successfully", files: req.files });
-  } catch (error) {
-    res.status(500).json({ error: error.message })
+    if (!req.files || !req.files.image || !req.files.pdf) {
+      return res.status(400).json({ error: "PDF and Image are required" });
+    }
+
+    try {
+      const category = await Category.findByPk(categoryId);
+      if (!category) {
+        return res.status(404).json({ error: "Category not found" });
+      }
+
+      const fileBaseUrl = `${req.protocol}://${req.get("host")}/uploads`;
+
+      const book = await Book.create({
+        name,
+        description,
+        categoryId,
+        image: req.files.image[0].filename,
+        pdf: req.files.pdf[0].filename,
+      });
+
+      res.status(201).json({
+        message: "Book uploaded successfully",
+        data: {
+          id: book.id,
+          name: book.name,
+          description: book.description,
+          categoryId: book.categoryId,
+          image: `${fileBaseUrl}/${book.image}`, // ✅ full URL
+          pdf: `${fileBaseUrl}/${book.pdf}`,     // ✅ full URL
+          createdAt: book.createdAt,
+          updatedAt: book.updatedAt
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
-});
+);
+
+
+
+
 
 router.put("/update/:id", upload.fields([{ name: "pdf" }, { name: "image" }]), async (req, res) => {
   const book = await Book.findByPk(req.params.id);
